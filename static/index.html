@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>神秘时代 · 六边形连线谜宫 — 路径规划求解工具</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+/* ── 全局重置 ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0d0f1a; color: #e0e4f0; overflow: hidden; }
+
+/* ── 布局 ─────────────────────────────────────────────── */
+.app-container { display: flex; flex-direction: column; height: 100vh; }
+.app-main-row { display: flex; flex: 1; min-height: 0; }
+.sidebar {
+  width: 300px; min-width: 300px; background: #141827;
+  border-right: 1px solid #2a2f45; display: flex; flex-direction: column;
+  padding: 12px; gap: 8px; overflow: hidden;
+}
+.sidebar-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.main-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+
+/* ── 侧边栏组件通用 ──────────────────────────────────── */
+.panel {
+  background: #1a1f33; border: 1px solid #2a2f45; border-radius: 8px; padding: 12px;
+}
+.panel h3 { font-size: 13px; font-weight: 600; color: #8899cc; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.panel label { font-size: 12px; color: #8899cc; display: block; margin-bottom: 4px; }
+
+/* ── 按钮 ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border: 1px solid #3a3f5a; border-radius: 6px;
+  background: #1e2340; color: #c8d0e8; font-size: 13px; cursor: pointer;
+  transition: all 0.2s; white-space: nowrap;
+}
+.btn:hover { background: #2a3055; border-color: #5a6a9a; }
+.btn-primary { background: #2a4a7a; border-color: #3a6aaa; color: #fff; }
+.btn-primary:hover { background: #3a5a9a; }
+.btn-danger { background: #5a2020; border-color: #8a3030; color: #f0a0a0; }
+.btn-danger:hover { background: #7a3030; }
+.btn-success { background: #1a4a2a; border-color: #2a6a3a; color: #a0e0a0; }
+.btn-success:hover { background: #2a6a3a; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── 下拉/输入 ────────────────────────────────────────── */
+select, input[type="number"], input[type="text"] {
+  background: #0d0f1a; border: 1px solid #2a2f45; border-radius: 4px;
+  color: #e0e4f0; padding: 6px 8px; font-size: 13px; width: 100%;
+}
+select:focus, input:focus { outline: none; border-color: #4a6aaa; }
+
+/* ── 右侧库存栏（竖直排列）─────────────────────────── */
+.inv-side {
+  width: 130px; min-width: 130px;
+  background: #0d0f1a;
+  border-left: 1px solid #2a2f45;
+  padding: 6px 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.inv-side-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.inv-side-row .dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.inv-side-row .name {
+  font-size: 10px; color: #c8d0e8; white-space: nowrap; flex: 1; min-width: 0;
+}
+.inv-side-row input {
+  width: 30px; padding: 1px 2px; font-size: 10px; text-align: center;
+  background: transparent; border: none; border-bottom: 1px solid #3a3f5a;
+  color: #e0e4f0; outline: none; flex-shrink: 0;
+}
+.inv-side-row input:focus { border-bottom-color: #4a6aaa; }
+
+/* ── 状态栏 ───────────────────────────────────────────── */
+.status-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: #141827cc; backdrop-filter: blur(8px);
+  border-top: 1px solid #2a2f45; padding: 8px 16px;
+  font-size: 13px; display: flex; align-items: center; gap: 12px;
+  z-index: 10;
+}
+.status-bar .msg { flex: 1; }
+.status-bar .success { color: #80d090; }
+.status-bar .error { color: #e08080; }
+
+/* ── 上下文菜单 ────────────────────────────────────────── */
+.context-menu {
+  position: fixed; background: #1a1f33; border: 1px solid #3a3f5a;
+  border-radius: 8px; padding: 6px; z-index: 1000; min-width: 180px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.context-menu .header { font-size: 11px; color: #8899cc; padding: 4px 8px; border-bottom: 1px solid #2a2f45; margin-bottom: 4px; }
+.context-menu .item {
+  padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px;
+  display: flex; align-items: center; gap: 6px; transition: background 0.15s;
+}
+.context-menu .item:hover { background: #2a3055; }
+.context-menu .item .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.context-menu .divider { height: 1px; background: #2a2f45; margin: 4px 0; }
+
+/* ── Canvas ───────────────────────────────────────────── */
+#hexCanvas { cursor: pointer; }
+
+/* ── 画布悬停提示 ────────────────────────────────────── */
+#hexTooltip {
+  position: absolute; pointer-events: none; z-index: 20;
+  background: #141827ee; border: 1px solid #3a3f5a; border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; color: #e0e4f0; white-space: nowrap;
+  display: none; backdrop-filter: blur(4px);
+}
+
+/* ── 滚动条 ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0d0f1a; }
+::-webkit-scrollbar-thumb { background: #2a2f45; border-radius: 3px; }
+
+/* ── 元素色标 (TC4.2.3.5a) ──────────────────────────── */
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="app-container">
+    <div class="app-main-row">
+    <!-- ── 侧边栏 ──────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-scroll">
+        <!-- 地图尺寸 -->
+        <div class="panel">
+          <h3>🌐 地图尺寸</h3>
+          <div class="btn-group">
+            <button v-for="s in sizes" :key="s.key"
+              class="btn btn-sm"
+              :class="{ 'btn-primary': sizeKey === s.key }"
+              @click="setSize(s.key)">
+              {{ s.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 快捷操作 -->
+        <div class="panel">
+          <h3>⚡ 快捷操作</h3>
+          <div class="btn-group">
+            <button class="btn btn-sm" @click="clearAll">🗑️ 清空地图</button>
+            <button class="btn btn-sm" @click="resetMap">🔄 重置</button>
+          </div>
+        </div>
+
+        <!-- 合成表管理 -->
+        <div class="panel">
+          <h3>📦 合成表管理</h3>
+          <div class="btn-group">
+            <button class="btn btn-sm" @click="loadDefaultRecipes">🔮 默认</button>
+            <label class="btn btn-sm" style="cursor:pointer;">
+              📂 导入合成表
+              <input type="file" accept=".json" style="display:none" @change="importRecipes">
+            </label>
+            <button class="btn btn-sm" @click="exportRecipes">💾 导出合成表</button>
+          </div>
+          <div style="font-size:11px;color:#667;margin-top:4px;">
+            已加载 {{ registry.all_elements.length }} 种元素
+            ({{ registry.base_aspects.length }} 基础 / {{ registry.composite_aspects.length }} 复合)
+          </div>
+          <!-- 配方预览/编辑 -->
+          <details style="margin-top:6px;" :open="recipePanelOpen">
+            <summary style="font-size:11px;color:#8899cc;cursor:pointer;">📜 查看/编辑配方 ({{ recipeCount }})</summary>
+            <div style="margin-top:4px;display:flex;flex-direction:column;gap:4px;">
+              <div style="display:flex;gap:4px;position:relative;">
+                <input type="text" v-model="newRecipeName" placeholder="新元素名"
+                  style="flex:1;font-size:11px;padding:3px 5px;">
+                <div style="position:relative;width:60px;">
+                  <input type="text" v-model="newRecipeIng1" placeholder="原料1"
+                    style="width:100%;font-size:11px;padding:3px 5px;"
+                    @focus="showSuggestions='ing1'" @blur="setTimeout(()=>showSuggestions='',200)"
+                    @input="onIngInput('ing1')">
+                  <div v-if="showSuggestions==='ing1' && filteredIng1.length"
+                    style="position:absolute;bottom:100%;left:0;right:0;background:#1a1f33;border:1px solid #3a3f5a;border-radius:4px;max-height:120px;overflow-y:auto;z-index:10;">
+                    <div v-for="s in filteredIng1" :key="s"
+                      @mousedown.prevent="selectIng('ing1', s)"
+                      style="padding:3px 6px;font-size:10px;cursor:pointer;border-bottom:1px solid #2a2f45;">
+                      {{ s }}
+                    </div>
+                  </div>
+                </div>
+                <div style="position:relative;width:60px;">
+                  <input type="text" v-model="newRecipeIng2" placeholder="原料2"
+                    style="width:100%;font-size:11px;padding:3px 5px;"
+                    @focus="showSuggestions='ing2'" @blur="setTimeout(()=>showSuggestions='',200)"
+                    @input="onIngInput('ing2')">
+                  <div v-if="showSuggestions==='ing2' && filteredIng2.length"
+                    style="position:absolute;bottom:100%;left:0;right:0;background:#1a1f33;border:1px solid #3a3f5a;border-radius:4px;max-height:120px;overflow-y:auto;z-index:10;">
+                    <div v-for="s in filteredIng2" :key="s"
+                      @mousedown.prevent="selectIng('ing2', s)"
+                      style="padding:3px 6px;font-size:10px;cursor:pointer;border-bottom:1px solid #2a2f45;">
+                      {{ s }}
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-sm" @click="addRecipe">➕</button>
+              </div>
+              <div style="max-height:120px;overflow-y:auto;font-size:11px;">
+                <div v-for="(ingredients, name) in registry.recipes" :key="name"
+                  style="display:flex;justify-content:space-between;padding:2px 4px;border-bottom:1px solid #1a1f33;">
+                  <span>{{ name }} <span style="color:#667;">=</span> {{ ingredients.join(' + ') }}</span>
+                  <span style="cursor:pointer;color:#844;" @click="removeRecipe(name)">✕</span>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- 操作说明 -->
+        <div style="font-size:11px;color:#667;text-align:center;line-height:1.4;">
+          左键切换 空白/阻挡 · 右键菜单设目标/元素
+        </div>
+
+        <!-- 当前选中信息 -->
+        <div class="panel">
+          <div style="font-size:12px;color:#8899cc;">
+            🖱️ 选中格子:
+            <span v-if="selectedCell">({{ selectedCell.q }}, {{ selectedCell.r }})</span>
+            <span v-else style="color:#667;">无</span>
+          </div>
+          <div style="font-size:11px;color:#667;margin-top:4px;">
+            <template v-if="selectedCell && selectedCell.element">
+              元素: {{ selectedCell.element }}
+            </template>
+            <template v-else-if="selectedCell && selectedCell.cellType === 'blocked'">
+              阻挡
+            </template>
+            <template v-else-if="selectedCell">空白</template>
+          </div>
+        </div>
+
+        <!-- 求解按钮 -->
+        <button class="btn btn-success" style="width:100%;padding:10px 12px;font-size:14px;font-weight:600;"
+          @click="solve" :disabled="solving">
+          {{ solving ? '⏳ 求解中…' : '🧠 计算最优解' }}
+        </button>
+
+        <!-- 导出合成表 -->
+        <div class="btn-group" style="justify-content:center;">
+          <button class="btn btn-sm" @click="exportRecipes">💾 导出合成表</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── 主区域 ──────────────────────────────────── -->
+    <main class="main-area">
+      <canvas id="hexCanvas" @contextmenu.prevent></canvas>
+      <div id="hexTooltip"></div>
+
+      <!-- 状态栏 -->
+      <div class="status-bar">
+        <span>半径: {{ radius }}</span>
+        <span>格子: {{ totalCells }}</span>
+        <span>目标: {{ targetCount }}</span>
+        <span class="msg" :class="statusClass">{{ statusMessage }}</span>
+      </div>
+    </main>
+
+    <!-- ── 右侧库存栏 ──────────────────────────── -->
+    <aside class="inv-side">
+      <template v-for="(qty, elem) in inventory" :key="elem">
+        <div class="inv-side-row">
+          <span class="name">{{ elem }}</span>
+          <input type="number" min="0" :value="qty"
+            @input="updateInventory(elem, $event)">
+        </div>
+      </template>
+    </aside>
+    </div><!-- /app-main-row -->
+
+</div><!-- /app-container -->
+
+<!-- 右键上下文菜单（脱离所有布局容器，不影响画布尺寸） -->
+<div v-if="contextMenu.show" class="context-menu" ref="ctxMenuRef"
+  :style="contextMenuStyle">
+  <div class="header">
+    坐标 ({{ contextMenu.q }}, {{ contextMenu.r }})
+  </div>
+  <div class="item" @click="setCellType('empty')">⬜ 空白</div>
+  <div class="item" @click="setCellType('blocked')">⬛ 阻挡</div>
+  <div class="divider"></div>
+  <div class="header">
+    <span>选元素</span>
+    <input type="text" v-model="elementSearch" ref="searchInputRef" placeholder="搜索…"
+      style="float:right;width:90px;font-size:10px;padding:2px 4px;"
+      @click.stop @keydown.esc="elementSearch='';contextMenu.show=false"
+    >
+  </div>
+  <div style="max-height:200px;overflow-y:auto;">
+    <div v-for="e in filteredElements" :key="e"
+      class="item" @click="setElement(e)">
+      {{ e }}
+    </div>
+    <div v-if="filteredElements.length === 0" style="padding:8px;color:#667;font-size:11px;text-align:center;">
+      无匹配元素
+    </div>
+  </div>
+</div>
+</div><!-- /app -->
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, watch, nextTick } = Vue;
+
+// ── 元素中文名 (TC4.2.3.5a 完整翻译) ────────────────
+const ELEMENT_CN = {
+  aer: '风', terra: '地', ignis: '火', aqua: '水',
+  ordo: '秩序', perditio: '混沌', victus: '生命', potentia: '能量',
+  lux: '光', motus: '运动', vacuos: '虚空', tempestas: '天气',
+  gelum: '冰霜', venenum: '毒药', vitreus: '水晶', permutatio: '交换',
+  herba: '植物', mortuus: '死亡', limus: '粘液', sano: '治愈',
+  bestia: '野兽', vinculum: '束缚', arbor: '树木', iter: '旅行',
+  spiritus: '灵魂', tenebrae: '黑暗', praecantatio: '魔法',
+  metallum: '金属', volatus: '飞行', sensus: '感官', cognitio: '心智',
+  humanus: '人类', corpus: '肉体', exanimis: '亡灵',
+  instrumentum: '工具', perfodio: '挖掘', messis: '收获', fames: '饥饿',
+  auram: '灵气', vitium: '腐化', alienis: '异域',
+  pannus: '布匹', telum: '武器', tutamen: '护甲', machina: '机械',
+  fabrico: '工艺', lucrum: '贪婪', meto: '收割',
+};
+
+// ── 元素颜色映射 (TC4.2.3.5a) ───────────────────────
+const ELEMENT_COLORS = {
+  aer: '#cccccc', terra: '#44aa44', ignis: '#ff4444', aqua: '#4488ff',
+  ordo: '#dddddd', perditio: '#440044',
+  victus: '#88cc88', potentia: '#cc44cc', lux: '#ffee44', motus: '#88ccff',
+  vacuos: '#444488', tempestas: '#8888ff', gelum: '#88ddff', venenum: '#88ff44',
+  vitreus: '#88ccdd', permutatio: '#aa88ff',
+  herba: '#44cc44', mortuus: '#555555', limus: '#668844', sano: '#88ff88',
+  bestia: '#cc8844', vinculum: '#886688', arbor: '#228822', iter: '#88aacc',
+  spiritus: '#aaccff', tenebrae: '#444466', praecantatio: '#ff88ff',
+  metallum: '#aaaacc', volatus: '#88ddff',
+  sensus: '#ffaa44', cognitio: '#ffcc44', humanus: '#ddaa88',
+  corpus: '#cc8866', exanimis: '#666666',
+  instrumentum: '#aabbcc', perfodio: '#886644', messis: '#88cc44',
+  fames: '#886644',
+  auram: '#88ddff', vitium: '#44aa88', alienis: '#8844aa',
+  pannus: '#bb88aa', telum: '#cc6644', tutamen: '#8899aa',
+  machina: '#7799bb', fabrico: '#88aacc', lucrum: '#ddaa44', meto: '#88aa44',
+};
+
+// ── 类型中文标签 ──────────────────────────────────────
+const TYPE_LABELS = {
+  empty: '空白',
+  blocked: '阻挡',
+};
+
+// ── App ────────────────────────────────────────────────
+const app = createApp({
+  setup() {
+    // ── 响应式状态 ──────────────────────────────────
+    const sizeKey = ref('small');
+    const sizes = [
+      { key: 'small', label: '小盘 R=3', radius: 3 },
+      { key: 'medium', label: '中盘 R=4', radius: 4 },
+      { key: 'large', label: '大盘 R=5', radius: 5 },
+    ];
+    const radius = computed(() => sizes.find(s => s.key === sizeKey.value)?.radius ?? 3);
+
+    // 网格数据
+    const cells = reactive({});  // key: "q,r" -> { q, r, cellType, element }
+
+    // 元素注册表
+    const registry = reactive({
+      all_elements: [],
+      base_aspects: [],
+      composite_aspects: [],
+      recipes: {},
+    });
+
+    // 库存
+    const inventory = reactive({});
+
+    // 求解状态
+    const solving = ref(false);
+    const statusMessage = ref('就绪 — 配置地图后点击"计算最优解"');
+    const statusClass = ref('');
+
+    // 求解结果（存储路径用于渲染）
+    const solutionPath = ref(null);  // { path_nodes, edges }
+
+    // 选中格
+    const selectedCell = ref(null);
+
+    // 上下文菜单
+    const contextMenu = reactive({ show: false, x: 0, y: 0, q: 0, r: 0 });
+    const contextMenuStyle = computed(() => {
+      if (!contextMenu.show) return { display: 'none' };
+      return { left: contextMenu.x + 'px', top: contextMenu.y + 'px' };
+    });
+    const ctxMenuRef = ref(null);
+    const searchInputRef = ref(null);
+    const elementSearch = ref('');
+    const filteredElements = computed(() => {
+      const q = elementSearch.value.toLowerCase();
+      if (!q) return registry.all_elements;
+      return registry.all_elements.filter(e => e.toLowerCase().includes(q));
+    });
+    // ── 配方原料自动补全 ───────────────────────────
+    const showSuggestions = ref('');
+    const filteredIng1 = computed(() => {
+      const q = newRecipeIng1.value.toLowerCase();
+      if (!q) return registry.all_elements.slice(0, 10);
+      return registry.all_elements.filter(e => e.toLowerCase().includes(q)).slice(0, 20);
+    });
+    const filteredIng2 = computed(() => {
+      const q = newRecipeIng2.value.toLowerCase();
+      if (!q) return registry.all_elements.slice(0, 10);
+      return registry.all_elements.filter(e => e.toLowerCase().includes(q)).slice(0, 20);
+    });
+    function onIngInput(field) {
+      showSuggestions.value = field;
+    }
+    function selectIng(field, val) {
+      if (field === 'ing1') newRecipeIng1.value = val;
+      else newRecipeIng2.value = val;
+      showSuggestions.value = '';
+    }
+
+    // Canvas 引用
+    let canvas = null;
+    let ctx = null;
+    let hexLayout = {};
+    let _renderPending = false;
+
+    // ── 渲染队列（防闪烁：合并多次请求为一次绘制）────
+    function queueRender() {
+      if (_renderPending) return;
+      _renderPending = true;
+      requestAnimationFrame(() => {
+        _renderPending = false;
+        render();
+      });
+    }
+
+    // ── 公共：六边形命中检测 ──────────────────────────
+    function hitTestHex(mx, my) {
+      const { coordCache, offsetX, offsetY, hexSize } = hexLayout;
+      if (!coordCache) return null;
+      let best = null, bestDist = hexSize;
+      for (const c of Object.values(cells)) {
+        const pos = coordCache[`${c.q},${c.r}`];
+        if (!pos) continue;
+        const d = Math.hypot(mx - (pos.x + offsetX), my - (pos.y + offsetY));
+        if (d < hexSize && d < bestDist) { bestDist = d; best = c; }
+      }
+      return best;
+    }
+
+    // ── 计算属性 ────────────────────────────────────
+    const totalCells = computed(() => {
+      return Object.keys(cells).length;
+    });
+    const targetCount = computed(() => {
+      return Object.values(cells).filter(c => c.element).length;
+    });
+
+    // ── 网格生成 ────────────────────────────────────
+    function generateHexGrid(R) {
+      const result = [];
+      for (let q = -R; q <= R; q++) {
+        for (let r = -R; r <= R; r++) {
+          if (Math.abs(q + r) <= R) {
+            result.push({ q, r });
+          }
+        }
+      }
+      return result;
+    }
+
+    function initGrid() {
+      const R = radius.value;
+      const coords = generateHexGrid(R);
+      const keys = new Set(coords.map(c => `${c.q},${c.r}`));
+
+      // 移除不存在的格子
+      for (const key of Object.keys(cells)) {
+        if (!keys.has(key)) {
+          delete cells[key];
+        }
+      }
+
+      // 添加新格子
+      for (const { q, r } of coords) {
+        const key = `${q},${r}`;
+        if (!cells[key]) {
+          cells[key] = reactive({ q, r, cellType: 'empty', element: null });
+        }
+      }
+    }
+
+    // ── API 调用 ────────────────────────────────────
+    async function loadDefaultRecipes() {
+      try {
+        const resp = await fetch('/api/default_recipes');
+        const data = await resp.json();
+        registry.all_elements = data.aspects || [];
+        registry.base_aspects = data.base_aspects || [];
+        registry.composite_aspects = data.composite_aspects || [];
+        registry.recipes = data.recipes || {};
+
+        // 重置库存
+        for (const key of Object.keys(inventory)) delete inventory[key];
+        for (const e of registry.base_aspects) inventory[e] = 5;
+        for (const e of registry.composite_aspects) inventory[e] = 3;
+
+        statusMessage.value = `已加载默认合成表: ${registry.all_elements.length} 种元素`;
+        statusClass.value = 'success';
+        queueRender();
+      } catch (e) {
+        statusMessage.value = '加载默认合成表失败: ' + e.message;
+        statusClass.value = 'error';
+      }
+    }
+
+    async function importRecipes(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.aspects && data.recipes) {
+          registry.all_elements = data.aspects || [];
+          registry.base_aspects = data.aspects.filter(a => !(a in data.recipes));
+          registry.composite_aspects = Object.keys(data.recipes);
+          registry.recipes = data.recipes;
+
+          // 清空库存后重新分配
+          for (const key of Object.keys(inventory)) delete inventory[key];
+          for (const e of registry.base_aspects) inventory[e] = 5;
+          for (const e of registry.composite_aspects) inventory[e] = 3;
+
+          statusMessage.value = `已导入合成表: ${registry.all_elements.length} 种元素`;
+          statusClass.value = 'success';
+        } else {
+          statusMessage.value = 'JSON 格式无效：需要 aspects 和 recipes 字段';
+          statusClass.value = 'error';
+        }
+      } catch (e) {
+        statusMessage.value = '导入合成表失败: ' + e.message;
+        statusClass.value = 'error';
+      }
+      queueRender();
+    }
+
+    // ── 地图编辑 ────────────────────────────────────
+    function setSize(key) {
+      sizeKey.value = key;
+      solutionPath.value = null;
+      initGrid();
+      nextTick(() => { queueRender(); });
+    }
+
+    function clearAll() {
+      for (const key of Object.keys(cells)) {
+        cells[key].cellType = 'empty';
+        cells[key].element = null;
+      }
+      solutionPath.value = null;
+      statusMessage.value = '已清空';
+      statusClass.value = '';
+      queueRender();
+    }
+
+    function resetMap() {
+      solutionPath.value = null;
+      statusMessage.value = '已重置';
+      statusClass.value = '';
+      // 只重置类型和元素
+      for (const key of Object.keys(cells)) {
+        cells[key].cellType = 'empty';
+        cells[key].element = null;
+      }
+      queueRender();
+    }
+
+    function setCellType(type) {
+      const { q, r } = contextMenu;
+      const key = `${q},${r}`;
+      if (cells[key]) {
+        cells[key].cellType = type;
+        if (type === 'empty') {
+          cells[key].element = null;
+        }
+      }
+      contextMenu.show = false;
+      solutionPath.value = null;
+      queueRender();
+    }
+
+    function setElement(elem) {
+      const { q, r } = contextMenu;
+      const key = `${q},${r}`;
+      if (cells[key]) {
+        cells[key].element = elem;
+        // 若当前是阻挡则改为空白
+        if (cells[key].cellType === 'blocked') {
+          cells[key].cellType = 'empty';
+        }
+      }
+      contextMenu.show = false;
+      solutionPath.value = null;
+      queueRender();
+    }
+
+    function updateInventory(elem, event) {
+      const val = parseInt(event.target.value);
+      if (!isNaN(val) && val >= 0) {
+        inventory[elem] = val;
+      }
+    }
+
+    // ── 导出合成表（仅导出 aspects + recipes） ────
+    function exportRecipes() {
+      const data = {
+        aspects: registry.all_elements,
+        recipes: { ...registry.recipes },
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'thaumcraft-recipes.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── 配方管理 ────────────────────────────────────
+    const recipePanelOpen = ref(false);
+    const newRecipeName = ref('');
+    const newRecipeIng1 = ref('');
+    const newRecipeIng2 = ref('');
+    const recipeCount = computed(() => Object.keys(registry.recipes).length);
+
+    function addRecipe() {
+      const name = newRecipeName.value.trim();
+      const i1 = newRecipeIng1.value.trim();
+      const i2 = newRecipeIng2.value.trim();
+      if (!name || !i1 || !i2) return;
+      if (!registry.all_elements.includes(name)) {
+        registry.all_elements.push(name);
+        registry.composite_aspects.push(name);
+      }
+      registry.recipes[name] = [i1, i2];
+      registry.base_aspects = registry.all_elements.filter(
+        a => !(a in registry.recipes)
+      );
+      if (!(name in inventory)) inventory[name] = 3;
+      for (const ing of [i1, i2]) {
+        if (!(ing in inventory)) inventory[ing] = 5;
+      }
+      newRecipeName.value = '';
+      newRecipeIng1.value = '';
+      newRecipeIng2.value = '';
+      statusMessage.value = `已添加配方: ${name}`;
+      statusClass.value = 'success';
+    }
+
+    function removeRecipe(name) {
+      delete registry.recipes[name];
+      const idx = registry.composite_aspects.indexOf(name);
+      if (idx >= 0) registry.composite_aspects.splice(idx, 1);
+      const aidx = registry.all_elements.indexOf(name);
+      if (aidx >= 0) registry.all_elements.splice(aidx, 1);
+      registry.base_aspects = registry.all_elements.filter(
+        a => !(a in registry.recipes)
+      );
+      statusMessage.value = `已删除配方: ${name}`;
+      statusClass.value = 'success';
+      queueRender();
+    }
+
+    // ── 求解 ────────────────────────────────────────
+    async function solve() {
+      solving.value = true;
+      statusMessage.value = '⏳ 正在计算最优解…';
+      statusClass.value = '';
+
+      try {
+        // 构建请求数据
+        const blocked = [];
+        const fixed = [];
+
+        for (const c of Object.values(cells)) {
+          if (c.cellType === 'blocked') blocked.push({ q: c.q, r: c.r });
+          else if (c.element) fixed.push({ q: c.q, r: c.r, element: c.element });
+        }
+
+        const payload = {
+          radius: radius.value,
+          blocked,
+          targets: fixed,
+          locked_elements: [],
+          block_runes: [],
+          recipes: { aspects: registry.all_elements, recipes: registry.recipes },
+          inventory: { ...inventory },
+        };
+
+        const resp = await fetch('/api/solve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.detail || `HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        solutionPath.value = data;
+
+        if (data.success) {
+          statusMessage.value = `✅ ${data.message || '求解成功！'}`;
+          statusClass.value = 'success';
+        } else {
+          let msg = data.message || '部分节点无法连通';
+          if (data.unreachable_targets?.length) {
+            msg += ` | 无法连通: ${data.unreachable_targets.map(t => `(${t.q},${t.r})`).join(', ')}`;
+          }
+          statusMessage.value = msg;
+          statusClass.value = 'error';
+        }
+      } catch (e) {
+        statusMessage.value = '❌ 求解失败: ' + e.message;
+        statusClass.value = 'error';
+      } finally {
+        solving.value = false;
+        queueRender();
+      }
+    }
+
+    // ── Canvas 渲染 ──────────────────────────────────
+    function render() {
+      if (!canvas || !ctx) return;
+
+      // 自动校准画布尺寸（避免初始布局未稳定导致的偏移）
+      const main = document.querySelector('.main-area');
+      if (main) {
+        const rect = main.getBoundingClientRect();
+        const barHeight = 44;
+        const w = rect.width - 32;
+        const h = rect.height - barHeight - 32;
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+      }
+
+      const R = radius.value;
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // 六边形几何参数（平顶式）
+      const SQRT3 = Math.sqrt(3);
+      const hexSize = Math.min(W / (3 * R + 1), H / (SQRT3 * (2 * R + 1)));
+      const hexW = hexSize * 2;
+      const hexH = hexSize * SQRT3;
+      const cos30 = SQRT3 / 2;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      const coordCache = {};
+      for (const c of Object.values(cells)) {
+        const x = hexSize * 1.5 * c.q;
+        const y = hexSize * (cos30 * c.q + Math.sqrt(3) * c.r);
+        coordCache[`${c.q},${c.r}`] = { x, y };
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const offsetX = W / 2 - cx;
+      const offsetY = H / 2 - cy;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // 绘制六边形格子
+      const pathNodes = solutionPath.value?.path_nodes || [];
+      const pathEdges = solutionPath.value?.edges || [];
+      const pathCoordSet = new Set(pathNodes.map(n => `${n.q},${n.r}`));
+      const unreachableSet = new Set(
+        (solutionPath.value?.unreachable_targets || []).map(t => `${t.q},${t.r}`)
+      );
+
+      for (const c of Object.values(cells)) {
+        const key = `${c.q},${c.r}`;
+        const pos = coordCache[key];
+        if (!pos) continue;
+        const px = pos.x + offsetX;
+        const py = pos.y + offsetY;
+
+        // 是否在解路径中
+        const inPath = pathCoordSet.has(key);
+        const isUnreachable = unreachableSet.has(key);
+
+        // 确定填充颜色
+        let fillColor = '#1a1f33';
+        let strokeColor = '#3a3f5a';
+        let alpha = 1;
+
+        if (c.cellType === 'blocked') {
+          fillColor = '#222233';
+          strokeColor = '#333344';
+        } else if (c.element) {
+          // 有元素的格子高亮边框
+          strokeColor = '#6688cc';
+        }
+
+        // 解路径覆盖颜色
+        if (inPath) {
+          const node = pathNodes.find(n => n.q === c.q && n.r === c.r);
+          if (node && node.element) {
+            fillColor = ELEMENT_COLORS[node.element] || '#888888';
+            alpha = 0.7;
+          } else {
+            fillColor = '#44cc88';
+            alpha = 0.5;
+          }
+          strokeColor = '#88ffaa';
+        }
+
+        // 区分用户固定节点 vs 计算出来的路径节点
+        const isUserCell = c.element != null;
+        const isComputedPath = inPath && !isUserCell;
+
+        if (isUnreachable) {
+          fillColor = '#ff2200';
+          alpha = 0.4;
+          strokeColor = '#ff4444';
+        }
+
+        // 绘制六边形（平顶式，角度从 0° 开始）
+        const vertices = [];
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 3) * i;
+          const vx = px + hexSize * Math.cos(angle);
+          const vy = py + hexSize * Math.sin(angle);
+          vertices.push({ x: vx, y: vy });
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(vertices[0].x, vertices[0].y);
+        for (let i = 1; i < 6; i++) {
+          ctx.lineTo(vertices[i].x, vertices[i].y);
+        }
+        ctx.closePath();
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = inPath ? 2 : 1;
+        ctx.stroke();
+
+        // 计算路径节点：添加虚线圆圈标记（仅计算格子，不包括用户固定节点）
+        if (isComputedPath) {
+          const dashR = hexSize * 0.5;
+          ctx.beginPath();
+          ctx.arc(px, py, dashR, 0, Math.PI * 2);
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = '#ffffffcc';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // 绘制元素图标（彩色圆 + 缩写字）
+        let iconChar = '';
+        let iconColor = '';
+        let elemLabel = '';
+        // 取元素名称：优先格子自身，其次求解路径
+        let cellElem = c.element;
+        if (!cellElem && inPath) {
+          const pn = pathNodes.find(n => n.q === c.q && n.r === c.r);
+          if (pn) cellElem = pn.element;
+        }
+
+        if (c.cellType === 'blocked') {
+          iconChar = '✕';
+          iconColor = '#444';
+        } else if (cellElem) {
+          const ec = ELEMENT_COLORS[cellElem] || '#888';
+          iconColor = ec;
+          iconChar = (ELEMENT_CN[cellElem] || cellElem).slice(0, 1);
+          elemLabel = cellElem + ' (' + (ELEMENT_CN[cellElem] || '') + ')';
+        }
+
+        if (iconChar) {
+          // 彩色圆底
+          const r = hexSize * 0.35;
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+          ctx.fillStyle = iconColor;
+          ctx.globalAlpha = inPath ? 0.85 : 0.5;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // 缩写字
+          ctx.fillStyle = '#fff';
+          ctx.font = `bold ${Math.max(9, hexSize * 0.35)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(iconChar, px, py);
+
+          // 悬停数据（通过 data 属性传递）
+          if (elemLabel) {
+            canvas.dataset.tipKey = `${c.q},${c.r}`;
+            canvas.dataset.tipText = elemLabel;
+          }
+        }
+      }
+
+      // 绘制连线
+      if (pathEdges.length > 0) {
+        ctx.strokeStyle = '#88ffaa';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.6;
+        for (const edge of pathEdges) {
+          const [p1, p2] = edge;
+          const k1 = `${p1[0]},${p1[1]}`;
+          const k2 = `${p2[0]},${p2[1]}`;
+          const pos1 = coordCache[k1];
+          const pos2 = coordCache[k2];
+          if (pos1 && pos2) {
+            ctx.beginPath();
+            ctx.moveTo(pos1.x + offsetX, pos1.y + offsetY);
+            ctx.lineTo(pos2.x + offsetX, pos2.y + offsetY);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // 闪烁动画标记不可达节点
+      if (unreachableSet.size > 0) {
+        const t = Date.now() / 500;
+        ctx.globalAlpha = 0.3 + 0.3 * Math.sin(t * Math.PI);
+        for (const c of Object.values(cells)) {
+          const key = `${c.q},${c.r}`;
+          if (!unreachableSet.has(key)) continue;
+          const pos = coordCache[key];
+          if (!pos) continue;
+          const px = pos.x + offsetX;
+          const py = pos.y + offsetY;
+          ctx.beginPath();
+          ctx.arc(px, py, hexSize * 0.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ff444488';
+          ctx.fill();
+          ctx.strokeStyle = '#ff4444';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // 保存布局供点击检测
+      hexLayout = { coordCache, offsetX, offsetY, hexSize, R };
+    }
+
+    // ── Canvas 交互 ──────────────────────────────────
+    function handleCanvasClick(e) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const cell = hitTestHex(mx, my);
+      if (!cell) return;
+
+      if (e.button === 0) {
+        // 左键：切换 empty ↔ blocked
+        if (cell.cellType === 'blocked') {
+          cell.cellType = 'empty';
+        } else {
+          cell.cellType = 'blocked';
+          cell.element = null;
+        }
+        solutionPath.value = null;
+        queueRender();
+      }
+    }
+
+    function handleCanvasRightClick(e) {
+      e.preventDefault();
+      // 先隐藏提示
+      const tip = document.getElementById('hexTooltip');
+      if (tip) tip.style.display = 'none';
+
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const cell = hitTestHex(mx, my);
+      if (!cell) return;
+
+      // 显示上下文菜单（防溢出：紧贴鼠标但保证不超出视口）
+      let menuX = e.clientX;
+      let menuY = e.clientY;
+      // 估算菜单尺寸后修正位置
+      const menuW = 200, menuH = 380;
+      if (menuX + menuW > window.innerWidth) menuX = window.innerWidth - menuW - 8;
+      if (menuY + menuH > window.innerHeight) menuY = window.innerHeight - menuH - 8;
+      if (menuX < 4) menuX = 4;
+      if (menuY < 4) menuY = 4;
+
+      contextMenu.show = true;
+      contextMenu.x = menuX;
+      contextMenu.y = menuY;
+      contextMenu.q = cell.q;
+      contextMenu.r = cell.r;
+
+      selectedCell.value = {
+        q: cell.q,
+        r: cell.r,
+        cellType: cell.cellType,
+        element: cell.element,
+      };
+    }
+
+    // ── 画布悬停提示 ────────────────────────────────
+    function handleCanvasMove(e) {
+      try {
+      const tip = document.getElementById('hexTooltip');
+      if (!tip) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const cell = hitTestHex(mx, my);
+      if (!cell) { tip.style.display = 'none'; return; }
+
+      // 获取元素名称：优先取格子自身，其次取求解路径
+      let elemName = cell.element;
+      if (!elemName && solutionPath.value) {
+        const pn = solutionPath.value.path_nodes.find(
+          n => n.q === cell.q && n.r === cell.r
+        );
+        if (pn) elemName = pn.element;
+      }
+
+      if (!elemName) {
+        tip.style.display = 'none';
+        return;
+      }
+
+      const cn = ELEMENT_CN[elemName] || '';
+      tip.textContent = `${cn} (${elemName})`;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX - rect.left + 14) + 'px';
+      tip.style.top = (e.clientY - rect.top - 30) + 'px';
+      } catch(err) { console.warn('hover err', err); }
+    }
+
+    // ── 点击外部关闭菜单 ────────────────────────────
+    function handleGlobalClick(e) {
+      if (contextMenu.show) {
+        const menu = document.querySelector('.context-menu');
+        if (menu && !menu.contains(e.target)) {
+          contextMenu.show = false;
+          elementSearch.value = '';
+        }
+      }
+    }
+
+    // 菜单关闭时清空搜索
+    // 菜单打开时自动聚焦搜索框，关闭时清空搜索
+    watch(() => contextMenu.show, (v) => {
+      if (v) {
+        nextTick(() => {
+          const inp = document.querySelector('.context-menu input[type="text"]');
+          if (inp) inp.focus();
+        });
+      } else {
+        elementSearch.value = '';
+      }
+    });
+
+    // ── 窗口大小调整 ────────────────────────────────
+    function onWindowResize() {
+      queueRender();
+    }
+
+    // ── 生命周期 ────────────────────────────────────
+    onMounted(() => {
+      canvas = document.getElementById('hexCanvas');
+      ctx = canvas.getContext('2d');
+
+      initGrid();
+      window.addEventListener('resize', onWindowResize);
+      document.addEventListener('click', handleGlobalClick);
+
+      canvas.addEventListener('click', handleCanvasClick);
+      canvas.addEventListener('contextmenu', handleCanvasRightClick);
+      canvas.addEventListener('mousemove', handleCanvasMove);
+
+      // 先设好画布尺寸（同步），数据加载完成后 render
+      const main = document.querySelector('.main-area');
+      if (main && canvas) {
+        const rect = main.getBoundingClientRect();
+        canvas.width = rect.width - 32;
+        canvas.height = rect.height - 44 - 32;
+      }
+
+      // 自动加载默认合成表（加载完内部会调用 queueRender 首次绘制）
+      loadDefaultRecipes();
+    });
+
+    // ── 监听尺寸变化 ────────────────────────────────
+    watch(radius, () => {
+      nextTick(() => { queueRender(); });
+    });
+
+    return {
+      sizes, sizeKey, radius,
+      cells, registry, inventory,
+      solving, statusMessage, statusClass,
+      selectedCell, contextMenu, solutionPath,
+      totalCells, targetCount,
+      ctxMenuRef, searchInputRef, contextMenuStyle,
+      elementSearch, filteredElements,
+      showSuggestions, filteredIng1, filteredIng2,
+      onIngInput, selectIng,
+      setSize, clearAll, resetMap,
+      loadDefaultRecipes, importRecipes,
+      setCellType, setElement,
+      updateInventory, exportRecipes,
+      addRecipe, removeRecipe,
+      newRecipeName, newRecipeIng1, newRecipeIng2,
+      recipePanelOpen, recipeCount,
+      solve,
+    };
+  }
+});
+
+app.mount('#app');
+</script>
+</body>
+</html>
